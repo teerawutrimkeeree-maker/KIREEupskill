@@ -1,20 +1,31 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ChartData } from "../types";
 
-// ✅ ใช้ import.meta.env สำหรับอ่าน API key จากไฟล์ .env
+// ✅ อ่านค่า API Key จากไฟล์ .env (ผ่าน Vite)
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
 if (!apiKey) {
   console.error("❌ ไม่พบค่า VITE_GEMINI_API_KEY ในไฟล์ .env");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey);
+let genAI: GoogleGenerativeAI | null = null;
 
+try {
+  genAI = new GoogleGenerativeAI(apiKey);
+} catch (err) {
+  console.error("❌ ไม่สามารถสร้างอินสแตนซ์ GoogleGenerativeAI ได้:", err);
+}
+
+// ✅ ฟังก์ชันวิเคราะห์คะแนน
 export const analyzeScores = async (
   title: string,
   data: { [key: string]: ChartData },
   targetScore?: number
 ): Promise<string> => {
+  if (!genAI) {
+    return "⚠️ ระบบไม่สามารถเชื่อมต่อกับบริการวิเคราะห์ข้อมูล (Gemini) ได้ โปรดตรวจสอบการตั้งค่า API Key";
+  }
+
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
     const dataString = JSON.stringify(data, null, 2);
@@ -33,15 +44,12 @@ ${dataString}
 ${targetScore ? `5. **เปรียบเทียบกับเป้าหมาย:** วิเคราะห์เมื่อเทียบกับ ${targetScore} คะแนน` : ""}
     `;
 
-    // ✅ ต้องส่ง prompt เป็น array
+    // ✅ ส่ง prompt เป็น array ตามรูปแบบใหม่ของ Gemini SDK
     const result = await model.generateContent([prompt]);
     const response = await result.response;
 
-    // ✅ ดึงข้อความจาก response
     const text = await response.text();
-
-    return text;
-
+    return text || "⚠️ ไม่พบข้อความตอบกลับจากโมเดล";
   } catch (error: any) {
     console.error("❌ Error calling Gemini API:", error);
     return "เกิดข้อผิดพลาดในการวิเคราะห์ข้อมูล โปรดตรวจสอบ API Key หรือการเชื่อมต่ออินเทอร์เน็ต";
